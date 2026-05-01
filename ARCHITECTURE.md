@@ -11,8 +11,8 @@ This document covers the engineering decisions made in this repo and maps them, 
 ### 1. Build, maintain, and improve the SaaS platform with AI agents as the primary execution layer
 
 - The whole codebase was built under the agent workflow documented in [`ai-agent-workflows`](https://github.com/vvazquezcolina/ai-agent-workflows).
-- The product itself **is** an AI-execution-layer SaaS: a Claude call is the primary action a user takes.
-- See [`src/lib/claude.ts`](./src/lib/claude.ts) for the inference wrapper, [`README.md#how-ai-agents-built-this`](./README.md) for the build process.
+- The product itself **is** an AI-execution-layer SaaS: an LLM call is the primary action a user takes.
+- See [`src/lib/llm.ts`](./src/lib/llm.ts) for the inference wrapper, [`README.md#how-ai-agents-built-this`](./README.md) for the build process.
 
 ### 2. Own production features, technical improvements, integrations, bug fixes, refactoring, system reliability
 
@@ -33,7 +33,7 @@ This document covers the engineering decisions made in this repo and maps them, 
 | Frontend | [`src/app/page.tsx`](./src/app/page.tsx), [`src/components/PriceDashboard.tsx`](./src/components/PriceDashboard.tsx) |
 | Database | [`prisma/schema.prisma`](./prisma/schema.prisma), [`prisma/seed.ts`](./prisma/seed.ts) |
 | API | OpenAPI-style boundary at [`src/lib/types.ts`](./src/lib/types.ts) (zod schemas) |
-| Integration | Anthropic SDK in [`src/lib/claude.ts`](./src/lib/claude.ts) with prompt caching |
+| Integration | OpenAI SDK in [`src/lib/llm.ts`](./src/lib/llm.ts) with prompt caching |
 | Deployment | [Vercel one-click](./README.md#deploy-to-vercel), CI in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) |
 | Monitoring | Token usage + cache-hit-ratio persisted on every suggestion (see [`PriceSuggestion`](./prisma/schema.prisma) model) |
 
@@ -50,8 +50,8 @@ Decisions documented below, with rationale:
 
 ### 6. Set standards for code quality, testing, observability, release safety
 
-- **Code quality:** every function has a single purpose; comments explain *why*, not *what* (see e.g. [`src/lib/claude.ts`](./src/lib/claude.ts) header)
-- **Testing:** [`__tests__/`](./__tests__/) covers boundary validation + AI wrapper edge cases, including the "Claude returns malformed JSON" failure mode
+- **Code quality:** every function has a single purpose; comments explain *why*, not *what* (see e.g. [`src/lib/llm.ts`](./src/lib/llm.ts) header)
+- **Testing:** [`__tests__/`](./__tests__/) covers boundary validation + AI wrapper edge cases, including the "OpenAI returns malformed JSON" failure mode
 - **Observability:** every AI call records `tokensIn`, `tokensOut`, `cacheHit`, `modelUsed` to the `PriceSuggestion` table — auditable post-hoc
 - **Release safety:** CI gates every PR (lint + typecheck + test); the standards reference in [`ai-agent-workflows/standards/`](https://github.com/vvazquezcolina/ai-agent-workflows/tree/main/standards)
 
@@ -94,13 +94,13 @@ The product calls in this repo (visible to anyone reading the code):
 
 ### Prompt caching on the system prompt
 
-**The choice.** [`src/lib/claude.ts`](./src/lib/claude.ts) wraps the system prompt in `cache_control: { type: 'ephemeral' }`.
+**The choice.** [`src/lib/llm.ts`](./src/lib/llm.ts) wraps the system prompt in `cache_control: { type: 'ephemeral' }`.
 
 **Why.** The system prompt is identical across every call. Without caching, every request pays for ~600 tokens of system prompt. With caching, the first call writes to the cache (5-min TTL); subsequent calls within the window read at ~10% the cost.
 
 **Concrete impact.** At 10 suggestions/min, that's the difference between $X and $X/10. Over a month at production load, it's the difference between a viable product and a margin problem.
 
-**Why this is in `claude.ts` and not in a wrapper.** Caching is a property of the call shape; it belongs with the call. Future engineers should see it without indirection.
+**Why this is in `llm.ts` and not in a wrapper.** Caching is a property of the call shape; it belongs with the call. Future engineers should see it without indirection.
 
 ### Server components for the landing, client components for the form
 

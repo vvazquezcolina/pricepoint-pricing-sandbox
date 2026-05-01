@@ -1,18 +1,27 @@
 /**
- * POST /api/suggest-price — ask the AI for a price suggestion for one
+ * POST /api/suggest-price — ask the LLM for a price suggestion for one
  * room+date combination.
  *
  * Boundary validation: SuggestPriceInputSchema (zod).
+ * Rate limit: 5 requests per IP per hour (in-memory, see lib/rate-limit.ts).
  * Failure modes:
+ * - Rate limit exceeded → 429
+ * - Demo mode (no API key) → 503
+ * - Malformed input → 400
  * - Room not found → 404
  * - AI inference fails → 502
- * - Malformed input → 400
  * Side effects: persists the suggestion + token usage to PriceSuggestion.
+ *
+ * Note on writes in production: when deployed on Vercel with a read-only
+ * SQLite bundle staged to /tmp, writes succeed (since /tmp is writable) but
+ * don't persist across cold starts. Acceptable for the demo. Real production
+ * uses Postgres — same Prisma code, different `provider` in schema.prisma.
  */
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { suggestPrice as callClaude } from '@/lib/claude';
+import { suggestPrice as callLLM } from '@/lib/llm';
+import { checkRateLimit } from '@/lib/rate-limit';
 import {
   SuggestPriceInputSchema,
   type SuggestPriceOutput,
@@ -20,7 +29,33 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0]!.trim();
+  const real = req.headers.get('x-real-ip');
+  if (real) return real;
+  return 'unknown';
+}
+
 export async function POST(req: Request) {
+  const ip = getClientIp(req);
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Rate limit exceeded',
+        detail: `Try again after ${new Date(limit.resetAt).toISOString()}. Limit is 5 suggestions per IP per hour to keep the demo cheap.`,
+      },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(Math.floor(limit.resetAt / 1000)),
+        },
+      }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -40,16 +75,15 @@ export async function POST(req: Request) {
   }
   const { roomId, date, occupancyHint, contextNote } = parsed.data;
 
-  // Demo-mode guard: the deployed sandbox runs without an API key on purpose.
-  // Anyone can hit this endpoint; without the guard, abuse would burn tokens.
-  // Local clones with a real key skip this branch and get real AI suggestions.
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // Demo-mode guard: when no API key is set (e.g. someone forks the repo
+  // without configuring it), short-circuit before any expensive work.
+  if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
       {
         mode: 'demo',
-        error: 'Demo mode — this deployed sandbox runs without an API key',
+        error: 'Demo mode — this deployment runs without an API key',
         detail:
-          'To see real AI price suggestions, clone the repo and run locally with your own ANTHROPIC_API_KEY:\n\ngithub.com/vvazquezcolina/pricepoint-pricing-sandbox',
+          'To see real AI price suggestions, set OPENAI_API_KEY (locally or as a Vercel env var):\n\ngithub.com/vvazquezcolina/pricepoint-pricing-sandbox',
       },
       { status: 503 }
     );
@@ -73,7 +107,7 @@ export async function POST(req: Request) {
 
   let aiResult;
   try {
-    aiResult = await callClaude({
+    aiResult = await callLLM({
       basePrice: room.basePrice,
       currentPrice: room.currentPrice,
       date,
@@ -88,27 +122,35 @@ export async function POST(req: Request) {
     );
   }
 
-  const saved = await prisma.priceSuggestion.create({
-    data: {
-      roomId,
-      date: new Date(date),
-      suggestedPrice: aiResult.suggestedPrice,
-      reasoning: aiResult.reasoning,
-      inputs: JSON.stringify({
-        basePrice: room.basePrice,
-        currentPrice: room.currentPrice,
-        occupancy,
-        contextNote: contextNote ?? null,
-      }),
-      modelUsed: aiResult.modelUsed,
-      promptCacheHit: aiResult.cacheHit,
-      tokensIn: aiResult.tokensIn,
-      tokensOut: aiResult.tokensOut,
-    },
-  });
+  let savedId: string | null = null;
+  try {
+    const saved = await prisma.priceSuggestion.create({
+      data: {
+        roomId,
+        date: new Date(date),
+        suggestedPrice: aiResult.suggestedPrice,
+        reasoning: aiResult.reasoning,
+        inputs: JSON.stringify({
+          basePrice: room.basePrice,
+          currentPrice: room.currentPrice,
+          occupancy,
+          contextNote: contextNote ?? null,
+        }),
+        modelUsed: aiResult.modelUsed,
+        promptCacheHit: aiResult.cacheHit,
+        tokensIn: aiResult.tokensIn,
+        tokensOut: aiResult.tokensOut,
+      },
+    });
+    savedId = saved.id;
+  } catch (err) {
+    // Read-only SQLite (or other DB unreachable) shouldn't block returning
+    // the suggestion. Log and proceed.
+    console.error('Failed to persist suggestion:', err);
+  }
 
   const response: SuggestPriceOutput = {
-    suggestionId: saved.id,
+    suggestionId: savedId ?? 'unsaved',
     roomId,
     date,
     suggestedPrice: aiResult.suggestedPrice,
@@ -119,5 +161,10 @@ export async function POST(req: Request) {
     tokensOut: aiResult.tokensOut,
   };
 
-  return NextResponse.json(response);
+  return NextResponse.json(response, {
+    headers: {
+      'X-RateLimit-Remaining': String(limit.remaining),
+      'X-RateLimit-Reset': String(Math.floor(limit.resetAt / 1000)),
+    },
+  });
 }

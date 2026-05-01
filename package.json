@@ -2,7 +2,7 @@
   "name": "pricepoint-pricing-sandbox",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-driven hotel-pricing demo. Next.js + Prisma/SQLite + Claude API. Built as a portfolio reference for AI-agent-driven SaaS engineering.",
+  "description": "AI-driven hotel-pricing demo. Next.js + Prisma/SQLite + OpenAI gpt-5.4-mini. Built as a portfolio reference for AI-agent-driven SaaS engineering.",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -15,8 +15,8 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.40.0",
     "@prisma/client": "^5.20.0",
+    "openai": "^4.73.0",
     "next": "14.2.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

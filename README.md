@@ -8,7 +8,7 @@ A small AI-driven hotel-pricing demo. **Built as a portfolio reference for AI-ag
 
 ## What it does
 
-Pick a hotel room, pick a night, optionally add an occupancy hint or context note, and ask Claude for a suggested price. The AI sees:
+Pick a hotel room, pick a night, optionally add an occupancy hint or context note, and ask gpt-5.4-mini for a suggested price. The AI sees:
 
 - Base price (the floor)
 - Current price (most recent set rate)
@@ -29,7 +29,7 @@ It returns a suggested price + a one-paragraph rationale. Every suggestion is pe
 | ORM | **Prisma** | Type-safe DB access; trivial swap from SQLite to Postgres |
 | DB (dev/demo) | **SQLite** (committed seed) | One-command boot; works on Vercel read-only |
 | DB (production hint) | **Postgres** via `DATABASE_URL` | One-line provider swap in `schema.prisma` |
-| AI | **Anthropic SDK + Claude** (Sonnet by default) | Prompt caching enabled; usage tracked |
+| AI | **OpenAI SDK + gpt-5.4-mini** (Sonnet by default) | Prompt caching enabled; usage tracked |
 | Validation | **Zod** at API boundaries | Trust internal calls, validate at the edge |
 | Tests | **Vitest** | Fast, ESM-native, mock-friendly |
 | CI | **GitHub Actions** | Lint + typecheck + test on every push |
@@ -44,7 +44,7 @@ npm install
 
 # 2. Configure
 cp .env.example .env
-# edit .env and set ANTHROPIC_API_KEY (get one at console.anthropic.com)
+# edit .env and set OPENAI_API_KEY (get one at platform.openai.com/api-keys)
 
 # 3. Initialize DB + seed
 npx prisma migrate dev --name init
@@ -65,9 +65,9 @@ npm test
 
 ## Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvvazquezcolina%2Fpricepoint-pricing-sandbox&env=ANTHROPIC_API_KEY&envDescription=Anthropic+API+key+for+price+suggestions)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvvazquezcolina%2Fpricepoint-pricing-sandbox&env=OPENAI_API_KEY&envDescription=OpenAI+API+key+for+price+suggestions)
 
-The button above forks the repo to your Vercel account and prompts for `ANTHROPIC_API_KEY`. The committed SQLite seed makes the demo immediately runnable; for write-heavy use, swap `provider = "sqlite"` to `"postgresql"` in `prisma/schema.prisma` and point `DATABASE_URL` at a Postgres instance.
+The button above forks the repo to your Vercel account and prompts for `OPENAI_API_KEY`. The committed SQLite seed makes the demo immediately runnable; for write-heavy use, swap `provider = "sqlite"` to `"postgresql"` in `prisma/schema.prisma` and point `DATABASE_URL` at a Postgres instance.
 
 ---
 
@@ -90,7 +90,7 @@ src/
 │   └── PriceDashboard.tsx          # client component, the main UI
 └── lib/
     ├── db.ts                       # Prisma singleton
-    ├── claude.ts                   # AI inference wrapper (caching, structured output, error mapping)
+    ├── llm.ts                   # AI inference wrapper (caching, structured output, error mapping)
     └── types.ts                    # zod schemas + TS types
 
 prisma/
@@ -99,7 +99,7 @@ prisma/
 
 __tests__/
 └── lib/
-    ├── claude.test.ts              # AI wrapper: parsing, caching, error paths
+    ├── llm.test.ts              # AI wrapper: parsing, caching, error paths
     └── types.test.ts               # zod schemas: boundary validation
 ```
 

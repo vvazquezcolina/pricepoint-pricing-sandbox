@@ -23,7 +23,7 @@ export default async function HomePage() {
           Pricepoint Pricing Sandbox
         </h1>
         <p className="mt-2 text-sm text-muted max-w-2xl">
-          AI-driven hotel-pricing demo. Pick a room, set a date, and ask Claude
+          AI-driven hotel-pricing demo. Pick a room, set a date, and ask gpt-5.4-mini
           to suggest a price. The model sees base price, current price,
           occupancy signal and any context note you add. Source on{' '}
           <a

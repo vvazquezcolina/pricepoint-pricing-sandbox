@@ -9,7 +9,11 @@
 // (calendar pressure, local events). Real Pricepoint has many more dimensions.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" for local dev (macOS); "rhel-openssl-3.0.x" for Vercel's
+  // Node 20 / AL2023 runtime so the right query-engine binary is generated
+  // and bundled into the serverless function.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
