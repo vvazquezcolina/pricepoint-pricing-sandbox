@@ -19,12 +19,14 @@ export default function PriceDashboard({ rooms }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SuggestPriceOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [demoMessage, setDemoMessage] = useState<string | null>(null);
 
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
 
   async function onSuggest() {
     setError(null);
     setResult(null);
+    setDemoMessage(null);
     setLoading(true);
     try {
       const body: Record<string, unknown> = { roomId: selectedRoomId, date };
@@ -40,7 +42,11 @@ export default function PriceDashboard({ rooms }: Props) {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? `HTTP ${res.status}`);
+        if (json.mode === 'demo') {
+          setDemoMessage(json.detail ?? json.error);
+        } else {
+          setError(json.error ?? `HTTP ${res.status}`);
+        }
       } else {
         setResult(json as SuggestPriceOutput);
       }
@@ -145,6 +151,13 @@ export default function PriceDashboard({ rooms }: Props) {
             {error && (
               <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
                 {error}
+              </div>
+            )}
+
+            {demoMessage && (
+              <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 whitespace-pre-line">
+                <strong className="block mb-1">Demo mode</strong>
+                {demoMessage}
               </div>
             )}
 

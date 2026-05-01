@@ -40,6 +40,21 @@ export async function POST(req: Request) {
   }
   const { roomId, date, occupancyHint, contextNote } = parsed.data;
 
+  // Demo-mode guard: the deployed sandbox runs without an API key on purpose.
+  // Anyone can hit this endpoint; without the guard, abuse would burn tokens.
+  // Local clones with a real key skip this branch and get real AI suggestions.
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      {
+        mode: 'demo',
+        error: 'Demo mode — this deployed sandbox runs without an API key',
+        detail:
+          'To see real AI price suggestions, clone the repo and run locally with your own ANTHROPIC_API_KEY:\n\ngithub.com/vvazquezcolina/pricepoint-pricing-sandbox',
+      },
+      { status: 503 }
+    );
+  }
+
   const room = await prisma.room.findUnique({ where: { id: roomId } });
   if (!room) {
     return NextResponse.json({ error: 'Room not found' }, { status: 404 });
