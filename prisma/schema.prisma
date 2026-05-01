@@ -1,0 +1,66 @@
+// Prisma schema for the pricing sandbox.
+//
+// Why SQLite for a demo: zero-server, deploys with the codebase, makes the
+// demo runnable with one command. Production swap to Postgres is a one-line
+// `provider` change + DATABASE_URL.
+//
+// Why these models: Room is the entity being priced; PriceSuggestion is what
+// the AI produces (ephemeral, traceable); OccupancyEvent is the input signal
+// (calendar pressure, local events). Real Pricepoint has many more dimensions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Room {
+  id              String            @id @default(cuid())
+  name            String
+  category        String            // e.g. "Standard", "Suite", "Penthouse"
+  basePrice       Float             // baseline rate in USD
+  currentPrice    Float             // most recent active rate
+  capacity        Int               // max guests
+  description     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  suggestions     PriceSuggestion[]
+  occupancy       OccupancyEvent[]
+}
+
+model PriceSuggestion {
+  id              String   @id @default(cuid())
+  roomId          String
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  date            DateTime // night being priced
+  suggestedPrice  Float
+  reasoning       String   // AI's stated rationale
+  inputs          String   // JSON-serialized inputs the AI saw
+
+  modelUsed       String   // model id, for traceability
+  promptCacheHit  Boolean  @default(false)
+  tokensIn        Int?
+  tokensOut       Int?
+
+  acceptedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([roomId, date])
+}
+
+model OccupancyEvent {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  date        DateTime
+  occupancy   Float    // 0.0 to 1.0
+  note        String?  // e.g., "F1 weekend", "Easter", "low season"
+
+  @@index([roomId, date])
+}
